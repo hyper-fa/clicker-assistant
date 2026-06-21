@@ -1,0 +1,39 @@
+# Rust / Windows
+/target/
+*.pdb
+*.ilk
+*.exe
+
+# Runtime data
+/scripts/
+
+# Android
+android-clicker/.gradle/
+android-clicker/.kotlin/
+android-clicker/**/build/
+android-clicker/local.properties
+android-clicker/keystore.properties
+android-clicker/keystore/
+android-clicker/**/*.jks
+android-clicker/**/*.keystore
+android-clicker/**/*.apk
+
+# HarmonyOS / DevEco
+harmony-clicker/node_modules/
+harmony-clicker/oh_modules/
+harmony-clicker/**/build/
+harmony-clicker/.hvigor/
+harmony-clicker/.idea/
+harmony-clicker/dist/
+harmony-clicker/signing/
+harmony-clicker/local.properties
+harmony-clicker/**/*.cer
+harmony-clicker/**/*.p7b
+harmony-clicker/**/*.p12
+harmony-clicker/**/*.csr
+harmony-clicker/**/*.jks
+harmony-clicker/**/*.hap
+
+# Keep project hvigor config source files
+!harmony-clicker/hvigor/
+!harmony-clicker/hvigor/hvigor-config.json5

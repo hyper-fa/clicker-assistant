@@ -1,0 +1,27 @@
+[package]
+name = "simple-clicker"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[dependencies]
+native-windows-gui = "1.0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "=1.12.0"
+winapi = { version = "0.3", features = [
+    "errhandlingapi",
+    "libloaderapi",
+    "memoryapi",
+    "processthreadsapi",
+    "shellscalingapi",
+    "sysinfoapi",
+    "winbase",
+    "windef",
+    "winuser",
+] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

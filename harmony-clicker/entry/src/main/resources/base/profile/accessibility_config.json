@@ -1,0 +1,15 @@
+{
+  "accessibilityCapabilities": [
+    "retrieve",
+    "gesture",
+    "touchGuide"
+  ],
+  "accessibilityEventTypes": [
+    "click",
+    "longClick",
+    "select",
+    "textUpdate",
+    "pageStateUpdate"
+  ],
+  "notificationTimeout": 50
+}

@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "奔奔助手"
+    },
+    {
+      "name": "module_desc",
+      "value": "奔奔助手入口模块"
+    },
+    {
+      "name": "entry_desc",
+      "value": "奔奔助手主界面"
+    },
+    {
+      "name": "accessibility_label",
+      "value": "奔奔助手"
+    },
+    {
+      "name": "accessibility_desc",
+      "value": "允许奔奔助手通过无障碍手势点击屏幕。"
+    }
+  ]
+}

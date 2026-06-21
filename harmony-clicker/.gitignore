@@ -1,0 +1,14 @@
+node_modules/
+oh_modules/
+build/
+.hvigor/
+!hvigor/
+!hvigor/hvigor-config.json5
+.idea/
+*.cer
+*.p7b
+*.p12
+*.csr
+*.jks
+signing/
+local.properties

@@ -1,0 +1,51 @@
+{
+  app: {
+    signingConfigs: [
+      {
+        name: 'default',
+        type: 'HarmonyOS',
+        material: {
+          certpath: 'C:\\path\\to\\debug-or-release.cer',
+          keyAlias: 'debugKey',
+          keyPassword: 'ChangeThisPassword',
+          profile: 'C:\\path\\to\\profile.p7b',
+          signAlg: 'SHA256withECDSA',
+          storeFile: 'C:\\path\\to\\keypair.p12',
+          storePassword: 'ChangeThisPassword'
+        }
+      }
+    ],
+    products: [
+      {
+        name: 'default',
+        signingConfig: 'default',
+        compileSdkVersion: '26.0.0',
+        compatibleSdkVersion: '6.1.1(24)',
+        targetSdkVersion: '6.1.1(24)',
+        runtimeOS: 'HarmonyOS'
+      }
+    ],
+    buildModeSet: [
+      {
+        name: 'debug'
+      },
+      {
+        name: 'release'
+      }
+    ]
+  },
+  modules: [
+    {
+      name: 'entry',
+      srcPath: './entry',
+      targets: [
+        {
+          name: 'default',
+          applyToProducts: [
+            'default'
+          ]
+        }
+      ]
+    }
+  ]
+}

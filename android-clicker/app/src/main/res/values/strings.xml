@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">奔奔助手</string>
+    <string name="accessibility_label">奔奔助手</string>
+    <string name="accessibility_description">允许奔奔助手通过无障碍手势点击屏幕。</string>
+</resources>
