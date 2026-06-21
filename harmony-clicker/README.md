@@ -1,4 +1,4 @@
-# 奔奔助手 HarmonyOS NEXT
+# 连点助手 HarmonyOS NEXT
 
 HarmonyOS NEXT 原生版自动点击器。v1 使用无障碍扩展手势注入执行屏幕点击，不使用 Android APK、Android AccessibilityService 或全局悬浮窗。
 

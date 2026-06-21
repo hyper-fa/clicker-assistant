@@ -1,7 +1,7 @@
 {
   "name": "harmony-clicker",
   "version": "1.0.0",
-  "description": "HarmonyOS NEXT native clicker for Benben Assistant",
+  "description": "HarmonyOS NEXT native clicker for Clicker Assistant",
   "private": true,
   "scripts": {
     "sync": "powershell -ExecutionPolicy Bypass -File ./scripts/hvigor.ps1 --sync -p product=default --analyze=normal --parallel --incremental --no-daemon",

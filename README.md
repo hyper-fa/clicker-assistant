@@ -1,6 +1,6 @@
-# 奔奔助手
+# 连点助手
 
-奔奔助手是一个多平台自动点击工具仓库，包含 Windows、Android 和 HarmonyOS NEXT 三个版本。仓库只保存源码和构建说明；可安装的 EXE、APK、HAP 应通过 GitHub Releases 发布。
+连点助手是一个多平台自动点击工具仓库，包含 Windows、Android 和 HarmonyOS NEXT 三个版本。仓库只保存源码和构建说明；可安装的 EXE、APK、HAP 应通过 GitHub Releases 发布。
 
 ## 版本
 
@@ -23,7 +23,7 @@ cargo build --release
 产物：
 
 ```text
-target\release\simple-clicker.exe
+target\release\clicker-assistant.exe
 ```
 
 ## Android 构建
@@ -65,8 +65,8 @@ Android 和 HarmonyOS 版本依赖系统无障碍能力执行点击。用户必�
 
 源码提交到 GitHub；安装包放 GitHub Releases：
 
-- `simple-clicker.exe`
-- `奔奔助手.apk`
-- `benben-assistant-*.hap`
+- `clicker-assistant.exe`
+- `连点助手.apk`
+- `clicker-assistant-*.hap`
 
 发布前先阅读 [docs/SECURITY_NOTES.md](docs/SECURITY_NOTES.md)，确认没有提交签名密钥、密码、本机路径或设备 UDID。

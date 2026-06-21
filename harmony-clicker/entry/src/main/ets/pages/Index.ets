@@ -116,7 +116,7 @@ struct Index {
     }
 
     if (!AccessibilityBridge.isEnabled()) {
-      promptAction.showToast({ message: '请先在系统设置中开启奔奔助手无障碍服务' });
+      promptAction.showToast({ message: '请先在系统设置中开启连点助手无障碍服务' });
       return;
     }
 
@@ -140,7 +140,7 @@ struct Index {
 
   build() {
     Column({ space: 16 }) {
-      Text('奔奔助手')
+      Text('连点助手')
         .fontSize(28)
         .fontWeight(FontWeight.Bold)
         .width('100%')

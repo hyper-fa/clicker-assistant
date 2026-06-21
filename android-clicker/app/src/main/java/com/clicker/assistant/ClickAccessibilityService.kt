@@ -1,4 +1,4 @@
-package com.simpleclicker.mobile
+package com.clicker.assistant
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription

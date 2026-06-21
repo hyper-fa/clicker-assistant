@@ -10,11 +10,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace "com.simpleclicker.mobile"
+    namespace "com.clicker.assistant"
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.simpleclicker.mobile"
+        applicationId "com.clicker.assistant"
         minSdk 24
         targetSdk 34
         versionCode 1

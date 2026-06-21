@@ -13,7 +13,7 @@ cargo build --release
 发布文件：
 
 ```text
-target\release\simple-clicker.exe
+target\release\clicker-assistant.exe
 ```
 
 ## Android
@@ -40,9 +40,9 @@ gradle assembleDebug --stacktrace --console=plain
 `keystore.properties` 示例：
 
 ```properties
-storeFile=keystore/benben-release.jks
+storeFile=keystore/clicker-assistant-release.jks
 storePassword=ChangeThisPassword
-keyAlias=benben
+keyAlias=clicker
 keyPassword=ChangeThisPassword
 ```
 
@@ -74,14 +74,14 @@ npm run build
 发布文件建议命名：
 
 ```text
-benben-assistant-harmonyos-next-signed.hap
+clicker-assistant-harmonyos-next-signed.hap
 ```
 
 ## GitHub Release 附件
 
 推荐每次发布上传：
 
-- `simple-clicker.exe`
-- `奔奔助手.apk`
-- `benben-assistant-harmonyos-next-signed.hap`
+- `clicker-assistant.exe`
+- `连点助手.apk`
+- `clicker-assistant-harmonyos-next-signed.hap`
 - 简短变更说明和目标系统版本
