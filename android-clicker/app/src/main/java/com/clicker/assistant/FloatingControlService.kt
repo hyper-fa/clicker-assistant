@@ -1,8 +1,11 @@
 package com.clicker.assistant
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -14,12 +17,13 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 class FloatingControlService : Service() {
     private lateinit var windowManager: WindowManager
     private var rootView: FrameLayout? = null
-    private var crosshairView: TextView? = null
+    private var crosshairView: View? = null
     private var actionButton: Button? = null
     private var statusView: TextView? = null
     private var crosshairParams: WindowManager.LayoutParams? = null
@@ -47,13 +51,7 @@ class FloatingControlService : Service() {
     private fun showCrosshair() {
         val savedTarget = ClickerSettings.target(this)
         val size = dp(56)
-        val view = TextView(this).apply {
-            text = "+"
-            textSize = 34f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setBackgroundColor(0xCC2563EB.toInt())
-        }
+        val view = CrosshairView(this)
 
         val params = WindowManager.LayoutParams(
             size,
@@ -75,19 +73,26 @@ class FloatingControlService : Service() {
                     dragState.startRawY = event.rawY
                     dragState.startX = params.x
                     dragState.startY = params.y
+                    screenCenterOf(view)?.let { center ->
+                        dragState.startCenterX = center.first
+                        dragState.startCenterY = center.second
+                    }
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     params.x = dragState.startX + (event.rawX - dragState.startRawX).roundToInt()
                     params.y = dragState.startY + (event.rawY - dragState.startRawY).roundToInt()
                     windowManager.updateViewLayout(view, params)
-                    saveTargetFromParams(params, size)
+                    saveTargetFromDrag(dragState, event)
                     updateStatus()
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    saveTargetFromParams(params, size)
-                    updateStatus()
+                    saveTargetFromDrag(dragState, event)
+                    view.post {
+                        saveTargetFromView(view)
+                        updateStatus()
+                    }
                     true
                 }
                 else -> false
@@ -97,7 +102,9 @@ class FloatingControlService : Service() {
         crosshairView = view
         crosshairParams = params
         windowManager.addView(view, params)
-        saveTargetFromParams(params, size)
+        view.post {
+            alignCrosshairToSavedTarget(view, params)
+        }
     }
 
     private fun showPanel() {
@@ -181,8 +188,47 @@ class FloatingControlService : Service() {
         setCrosshairTouchable(!ClickEngine.isRunning)
     }
 
-    private fun saveTargetFromParams(params: WindowManager.LayoutParams, size: Int) {
-        ClickerSettings.setTarget(this, params.x + size / 2, params.y + size / 2)
+    private fun alignCrosshairToSavedTarget(view: View, params: WindowManager.LayoutParams) {
+        val target = ClickerSettings.target(this)
+        val center = screenCenterOf(view) ?: return
+        val deltaX = target.first - center.first
+        val deltaY = target.second - center.second
+
+        if (deltaX != 0 || deltaY != 0) {
+            params.x += deltaX
+            params.y += deltaY
+            windowManager.updateViewLayout(view, params)
+        }
+
+        view.post {
+            saveTargetFromView(view)
+            updateStatus()
+        }
+    }
+
+    private fun saveTargetFromDrag(dragState: DragState, event: MotionEvent) {
+        val startCenterX = dragState.startCenterX ?: return
+        val startCenterY = dragState.startCenterY ?: return
+        val deltaX = (event.rawX - dragState.startRawX).roundToInt()
+        val deltaY = (event.rawY - dragState.startRawY).roundToInt()
+        ClickerSettings.setTarget(this, startCenterX + deltaX, startCenterY + deltaY)
+    }
+
+    private fun saveTargetFromView(view: View) {
+        val center = screenCenterOf(view) ?: return
+        ClickerSettings.setTarget(this, center.first, center.second)
+    }
+
+    private fun screenCenterOf(view: View): Pair<Int, Int>? {
+        if (!view.isAttachedToWindow || view.width == 0 || view.height == 0) {
+            return null
+        }
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        return Pair(
+            location[0] + (view.width / 2f).roundToInt(),
+            location[1] + (view.height / 2f).roundToInt()
+        )
     }
 
     private fun setCrosshairTouchable(touchable: Boolean) {
@@ -218,5 +264,50 @@ class FloatingControlService : Service() {
         var startRawY = 0f
         var startX = 0
         var startY = 0
+        var startCenterX: Int? = null
+        var startCenterY: Int? = null
+    }
+
+    private class CrosshairView(context: Context) : View(context) {
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xCC2563EB.toInt()
+            style = Paint.Style.FILL
+        }
+        private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = dp(2f)
+        }
+        private val crossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeWidth = dp(3f)
+        }
+        private val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFD166.toInt()
+            style = Paint.Style.FILL
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val centerX = width / 2f
+            val centerY = height / 2f
+            val radius = min(width, height) / 2f - dp(2f)
+            val gap = dp(5f)
+            val armLength = radius - dp(8f)
+
+            canvas.drawCircle(centerX, centerY, radius, fillPaint)
+            canvas.drawCircle(centerX, centerY, radius - ringPaint.strokeWidth / 2f, ringPaint)
+            canvas.drawLine(centerX - armLength, centerY, centerX - gap, centerY, crossPaint)
+            canvas.drawLine(centerX + gap, centerY, centerX + armLength, centerY, crossPaint)
+            canvas.drawLine(centerX, centerY - armLength, centerX, centerY - gap, crossPaint)
+            canvas.drawLine(centerX, centerY + gap, centerX, centerY + armLength, crossPaint)
+            canvas.drawCircle(centerX, centerY, dp(3f), centerPaint)
+        }
+
+        private fun dp(value: Float): Float {
+            return value * resources.displayMetrics.density
+        }
     }
 }
