@@ -1,4 +1,4 @@
-package com.clicker.assistant
+package com.simpleclicker.mobile
 
 import android.os.Handler
 import android.os.Looper

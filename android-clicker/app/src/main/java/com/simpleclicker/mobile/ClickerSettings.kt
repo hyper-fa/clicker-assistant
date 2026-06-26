@@ -1,4 +1,4 @@
-package com.clicker.assistant
+package com.simpleclicker.mobile
 
 import android.content.Context
 

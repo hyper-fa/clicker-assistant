@@ -1,14 +1,16 @@
-package com.clicker.assistant
+package com.simpleclicker.mobile
 
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -54,6 +56,7 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "开启无障碍权限"
             setOnClickListener {
+                stopFloatingControls()
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
         }, fullWidth(dp(48)))
@@ -66,6 +69,7 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "开启悬浮窗权限"
             setOnClickListener {
+                stopFloatingControls()
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:$packageName")
@@ -94,7 +98,7 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "请先开启悬浮窗权限", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
-                startService(Intent(this@MainActivity, FloatingControlService::class.java))
+                startFloatingControls()
                 Toast.makeText(this@MainActivity, "已启动悬浮窗", Toast.LENGTH_SHORT).show()
             }
         }, fullWidth(dp(52)))
@@ -135,7 +139,27 @@ class MainActivity : Activity() {
     }
 
     private fun isAccessibilityEnabled(): Boolean {
+        val accessibilityEnabled = Settings.Secure.getInt(
+            contentResolver,
+            Settings.Secure.ACCESSIBILITY_ENABLED,
+            0
+        ) == 1
+        if (!accessibilityEnabled) {
+            return false
+        }
+
         val expectedService = ComponentName(this, ClickAccessibilityService::class.java)
+        val manager = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val managerServices = manager.getEnabledAccessibilityServiceList(
+            android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+        )
+        if (managerServices.any {
+                it.resolveInfo.serviceInfo.packageName == packageName &&
+                    it.resolveInfo.serviceInfo.name == ClickAccessibilityService::class.java.name
+            }) {
+            return true
+        }
+
         val enabledServices = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
@@ -149,6 +173,20 @@ class MainActivity : Activity() {
             }
         }
         return false
+    }
+
+    private fun stopFloatingControls() {
+        ClickEngine.stop()
+        stopService(Intent(this, FloatingControlService::class.java))
+    }
+
+    private fun startFloatingControls() {
+        val intent = Intent(this, FloatingControlService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
     }
 
     private fun fullWidth(height: Int): LinearLayout.LayoutParams {
