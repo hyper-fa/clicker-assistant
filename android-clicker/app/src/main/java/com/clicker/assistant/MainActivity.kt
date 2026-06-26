@@ -6,15 +6,16 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import android.app.Activity
+import android.content.ComponentName
 
 class MainActivity : Activity() {
     private lateinit var accessibilityStatus: TextView
@@ -134,17 +135,20 @@ class MainActivity : Activity() {
     }
 
     private fun isAccessibilityEnabled(): Boolean {
-        if (ClickAccessibilityService.isEnabled) {
-            return true
+        val expectedService = ComponentName(this, ClickAccessibilityService::class.java)
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(enabledServices)
+        for (enabledService in splitter) {
+            val enabledComponent = ComponentName.unflattenFromString(enabledService)
+            if (expectedService == enabledComponent) {
+                return true
+            }
         }
-        val manager = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-        val enabledServices = manager.getEnabledAccessibilityServiceList(
-            android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
-        )
-        return enabledServices.any {
-            it.resolveInfo.serviceInfo.packageName == packageName &&
-                it.resolveInfo.serviceInfo.name == ClickAccessibilityService::class.java.name
-        }
+        return false
     }
 
     private fun fullWidth(height: Int): LinearLayout.LayoutParams {

@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
+import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 
 class ClickAccessibilityService : AccessibilityService() {
@@ -41,6 +42,13 @@ class ClickAccessibilityService : AccessibilityService() {
             instance = null
         }
         super.onDestroy()
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        if (instance === this) {
+            instance = null
+        }
+        return super.onUnbind(intent)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
