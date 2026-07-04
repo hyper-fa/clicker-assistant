@@ -34,8 +34,14 @@ use winapi::um::winuser::{
 const HOTKEY_RUN_ID: i32 = 0x4639;
 const HOTKEY_RECORD_ID: i32 = 0x4638;
 const RAW_HOTKEY_HANDLER_ID: usize = 0x1_4639;
-const APP_WIDTH: i32 = 1080;
-const APP_HEIGHT: i32 = 610;
+const APP_WIDTH: i32 = 1040;
+const APP_HEIGHT: i32 = 680;
+const SURFACE: [u8; 3] = [244, 248, 252];
+const PANEL: [u8; 3] = [232, 241, 249];
+const PANEL_ALT: [u8; 3] = [222, 235, 246];
+const MUTED: [u8; 3] = [71, 85, 105];
+const CYAN: [u8; 3] = [8, 145, 178];
+const BLUE: [u8; 3] = [37, 99, 235];
 
 fn main() {
     unsafe {
@@ -54,6 +60,18 @@ fn main() {
 
 struct App {
     window: nwg::Window,
+    _app_icon: nwg::Icon,
+    _hero_label: nwg::RichLabel,
+    _hero_hint: nwg::RichLabel,
+    _click_panel: nwg::Frame,
+    _target_panel: nwg::Frame,
+    _timing_panel: nwg::Frame,
+    _script_panel: nwg::Frame,
+    _control_panel: nwg::Frame,
+    _click_panel_title: nwg::RichLabel,
+    _target_panel_title: nwg::RichLabel,
+    _timing_panel_title: nwg::RichLabel,
+    _script_panel_title: nwg::RichLabel,
     _title_font: nwg::Font,
     _normal_font: nwg::Font,
     _small_font: nwg::Font,
@@ -117,17 +135,112 @@ enum CapturedPosition {
 
 impl App {
     fn build() -> Result<Rc<Self>, nwg::NwgError> {
+        let app_icon = nwg::Icon::from_bin(include_bytes!("../assets/app.ico"))?;
         let mut window = nwg::Window::default();
         nwg::Window::builder()
             .size((APP_WIDTH, APP_HEIGHT))
             .position((160, 120))
-            .title("简单连点器")
+            .title("Clicker Assistant - 连点助手")
+            .icon(Some(&app_icon))
             .flags(nwg::WindowFlags::WINDOW | nwg::WindowFlags::VISIBLE)
             .build(&mut window)?;
 
-        let title_font = build_font(18)?;
-        let normal_font = build_font(20)?;
-        let small_font = build_font(16)?;
+        let title_font = build_font(25)?;
+        let section_font = build_font(18)?;
+        let normal_font = build_font(17)?;
+        let small_font = build_font(14)?;
+
+        let mut hero_label = nwg::RichLabel::default();
+        let mut hero_hint = nwg::RichLabel::default();
+        let mut click_panel = nwg::Frame::default();
+        let mut target_panel = nwg::Frame::default();
+        let mut timing_panel = nwg::Frame::default();
+        let mut script_panel = nwg::Frame::default();
+        let mut control_panel = nwg::Frame::default();
+        let mut click_panel_title = nwg::RichLabel::default();
+        let mut target_panel_title = nwg::RichLabel::default();
+        let mut timing_panel_title = nwg::RichLabel::default();
+        let mut script_panel_title = nwg::RichLabel::default();
+
+        build_rich_label(
+            &mut hero_label,
+            &window,
+            "连点助手 COMMAND DECK",
+            28,
+            18,
+            430,
+            36,
+            &title_font,
+            SURFACE,
+            BLUE,
+        )?;
+        build_rich_label(
+            &mut hero_hint,
+            &window,
+            "F9 开始/停止 · F8 录制脚本 · 支持固定点和后台点击",
+            30,
+            55,
+            620,
+            24,
+            &small_font,
+            SURFACE,
+            MUTED,
+        )?;
+
+        build_panel(&mut click_panel, &window, 24, 96, 480, 170)?;
+        build_panel(&mut target_panel, &window, 532, 96, 480, 170)?;
+        build_panel(&mut timing_panel, &window, 24, 286, 480, 250)?;
+        build_panel(&mut script_panel, &window, 532, 286, 480, 250)?;
+        build_panel(&mut control_panel, &window, 24, 558, 988, 110)?;
+
+        build_rich_label(
+            &mut click_panel_title,
+            &click_panel,
+            "01  点击设置",
+            18,
+            14,
+            210,
+            28,
+            &section_font,
+            PANEL,
+            CYAN,
+        )?;
+        build_rich_label(
+            &mut target_panel_title,
+            &target_panel,
+            "02  目标位置",
+            18,
+            14,
+            210,
+            28,
+            &section_font,
+            PANEL,
+            CYAN,
+        )?;
+        build_rich_label(
+            &mut timing_panel_title,
+            &timing_panel,
+            "03  频率控制",
+            18,
+            14,
+            210,
+            28,
+            &section_font,
+            PANEL,
+            CYAN,
+        )?;
+        build_rich_label(
+            &mut script_panel_title,
+            &script_panel,
+            "04  脚本作战台",
+            18,
+            14,
+            230,
+            28,
+            &section_font,
+            PANEL,
+            CYAN,
+        )?;
 
         let mut mouse_label = nwg::Label::default();
         let mut click_label = nwg::Label::default();
@@ -149,137 +262,155 @@ impl App {
 
         build_label(
             &mut mouse_label,
-            &window,
+            &click_panel,
             "鼠标按键",
-            38,
-            42,
-            95,
+            22,
+            58,
+            82,
             26,
             &normal_font,
         )?;
         build_label(
             &mut click_label,
-            &window,
+            &click_panel,
             "点击方式",
-            38,
-            110,
-            95,
+            22,
+            112,
+            82,
             26,
             &normal_font,
         )?;
         build_label(
             &mut position_label,
-            &window,
+            &target_panel,
             "点击位置",
-            38,
-            186,
-            95,
+            22,
+            60,
+            82,
             26,
             &normal_font,
         )?;
         build_label(
             &mut interval_label,
-            &window,
-            "每次点击间隔时间",
-            38,
-            254,
-            170,
+            &timing_panel,
+            "每次点击间隔",
+            22,
+            58,
+            130,
             26,
             &normal_font,
         )?;
         build_label(
             &mut repeat_label,
-            &window,
-            "重复次数或时长",
-            38,
-            378,
-            150,
-            26,
-            &normal_font,
-        )?;
-        build_label(
-            &mut hotkey_label,
-            &window,
-            "开始/停止 快捷键",
-            30,
-            562,
-            185,
-            28,
-            &normal_font,
-        )?;
-        build_label(
-            &mut mode_label,
-            &window,
-            "执行模式",
-            38,
-            446,
+            &timing_panel,
+            "重复策略",
+            22,
+            196,
             95,
             26,
             &normal_font,
         )?;
         build_label(
-            &mut script_status_label,
-            &window,
-            "脚本：未录制",
-            408,
-            454,
-            300,
+            &mut hotkey_label,
+            &control_panel,
+            "开始/停止快捷键",
+            20,
+            22,
+            150,
             26,
+            &normal_font,
+        )?;
+        build_label(
+            &mut mode_label,
+            &script_panel,
+            "执行模式",
+            22,
+            58,
+            82,
+            26,
+            &normal_font,
+        )?;
+        build_label(
+            &mut script_status_label,
+            &script_panel,
+            "脚本：未录制",
+            22,
+            106,
+            430,
+            28,
             &small_font,
         )?;
 
         build_label(
             &mut hour_label,
-            &window,
+            &timing_panel,
             "时",
-            335,
-            310,
-            30,
+            207,
+            116,
+            24,
             26,
-            &normal_font,
+            &small_font,
         )?;
         build_label(
             &mut minute_label,
-            &window,
+            &timing_panel,
             "分",
-            474,
-            310,
-            30,
+            307,
+            116,
+            24,
             26,
-            &normal_font,
+            &small_font,
         )?;
         build_label(
             &mut second_label,
-            &window,
+            &timing_panel,
             "秒",
-            614,
-            310,
-            30,
+            407,
+            116,
+            24,
             26,
-            &normal_font,
+            &small_font,
         )?;
         build_label(
             &mut ms_label,
-            &window,
+            &timing_panel,
             "毫秒",
-            752,
-            310,
-            50,
+            207,
+            155,
+            48,
             26,
-            &normal_font,
+            &small_font,
         )?;
         build_label(
             &mut hint_label,
-            &window,
-            "（1秒=1000毫秒）",
-            812,
-            310,
-            190,
+            &timing_panel,
+            "1 秒 = 1000 毫秒",
+            305,
+            155,
+            145,
             26,
-            &normal_font,
+            &small_font,
         )?;
-        build_label(&mut play_label, &window, "▶", 807, 560, 28, 28, &title_font)?;
-        build_label(&mut help_label, &window, "?", 660, 562, 22, 22, &small_font)?;
+        build_label(
+            &mut play_label,
+            &control_panel,
+            "▶",
+            676,
+            36,
+            28,
+            28,
+            &title_font,
+        )?;
+        build_label(
+            &mut help_label,
+            &script_panel,
+            "?",
+            438,
+            20,
+            22,
+            22,
+            &small_font,
+        )?;
 
         let mut mouse_left = nwg::RadioButton::default();
         let mut mouse_right = nwg::RadioButton::default();
@@ -289,11 +420,11 @@ impl App {
 
         build_radio(
             &mut mouse_left,
-            &window,
-            "鼠标左键",
-            146,
-            42,
-            130,
+            &click_panel,
+            "左键",
+            118,
+            58,
+            78,
             28,
             true,
             true,
@@ -301,11 +432,11 @@ impl App {
         )?;
         build_radio(
             &mut mouse_right,
-            &window,
-            "鼠标右键",
-            308,
-            42,
-            130,
+            &click_panel,
+            "右键",
+            216,
+            58,
+            78,
             28,
             false,
             false,
@@ -313,11 +444,11 @@ impl App {
         )?;
         build_radio(
             &mut mouse_middle,
-            &window,
-            "鼠标中键（滚轮）",
-            470,
-            42,
-            190,
+            &click_panel,
+            "中键（滚轮）",
+            314,
+            58,
+            130,
             28,
             false,
             false,
@@ -325,11 +456,11 @@ impl App {
         )?;
         build_radio(
             &mut single_click,
-            &window,
+            &click_panel,
             "单击",
-            146,
-            110,
-            90,
+            118,
+            112,
+            78,
             28,
             true,
             true,
@@ -337,11 +468,11 @@ impl App {
         )?;
         build_radio(
             &mut double_click,
-            &window,
+            &click_panel,
             "双击",
-            267,
-            110,
-            90,
+            216,
+            112,
+            78,
             28,
             false,
             false,
@@ -350,9 +481,9 @@ impl App {
 
         let mut position_combo = nwg::ComboBox::default();
         nwg::ComboBox::builder()
-            .parent(&window)
-            .position((147, 170))
-            .size((240, 48))
+            .parent(&target_panel)
+            .position((122, 54))
+            .size((210, 44))
             .collection(vec!["鼠标光标所在位置", "固定位置"])
             .selected_index(Some(0))
             .font(Some(&normal_font))
@@ -360,19 +491,19 @@ impl App {
 
         let mut position_button = nwg::Button::default();
         nwg::Button::builder()
-            .parent(&window)
+            .parent(&target_panel)
             .text("设置位置")
-            .position((402, 178))
-            .size((170, 32))
+            .position((344, 57))
+            .size((110, 34))
             .font(Some(&small_font))
-            .enabled(false)
+            .enabled(true)
             .build(&mut position_button)?;
 
         let mut interval_combo = nwg::ComboBox::default();
         nwg::ComboBox::builder()
-            .parent(&window)
-            .position((231, 240))
-            .size((345, 48))
+            .parent(&timing_panel)
+            .position((158, 52))
+            .size((286, 44))
             .collection(vec!["自定义间隔时间"])
             .selected_index(Some(0))
             .font(Some(&normal_font))
@@ -383,16 +514,52 @@ impl App {
         let mut seconds = nwg::TextInput::default();
         let mut millis = nwg::TextInput::default();
 
-        build_input(&mut hours, &window, "0", 231, 303, 90, 35, &normal_font)?;
-        build_input(&mut minutes, &window, "0", 369, 303, 90, 35, &normal_font)?;
-        build_input(&mut seconds, &window, "0", 507, 303, 90, 35, &normal_font)?;
-        build_input(&mut millis, &window, "100", 646, 303, 90, 35, &normal_font)?;
+        build_input(
+            &mut hours,
+            &timing_panel,
+            "0",
+            116,
+            112,
+            82,
+            34,
+            &normal_font,
+        )?;
+        build_input(
+            &mut minutes,
+            &timing_panel,
+            "0",
+            216,
+            112,
+            82,
+            34,
+            &normal_font,
+        )?;
+        build_input(
+            &mut seconds,
+            &timing_panel,
+            "0",
+            316,
+            112,
+            82,
+            34,
+            &normal_font,
+        )?;
+        build_input(
+            &mut millis,
+            &timing_panel,
+            "100",
+            116,
+            152,
+            82,
+            34,
+            &normal_font,
+        )?;
 
         let mut repeat_combo = nwg::ComboBox::default();
         nwg::ComboBox::builder()
-            .parent(&window)
-            .position((228, 362))
-            .size((345, 48))
+            .parent(&timing_panel)
+            .position((158, 190))
+            .size((286, 44))
             .collection(vec!["重复点击直到手动停止"])
             .selected_index(Some(0))
             .font(Some(&normal_font))
@@ -400,9 +567,9 @@ impl App {
 
         let mut run_mode_combo = nwg::ComboBox::default();
         nwg::ComboBox::builder()
-            .parent(&window)
-            .position((147, 432))
-            .size((170, 44))
+            .parent(&script_panel)
+            .position((118, 52))
+            .size((145, 44))
             .collection(vec!["连点器", "脚本"])
             .selected_index(Some(0))
             .font(Some(&normal_font))
@@ -410,69 +577,72 @@ impl App {
 
         let mut record_button = nwg::Button::default();
         nwg::Button::builder()
-            .parent(&window)
-            .text("开始录制(F8)")
-            .position((326, 437))
-            .size((118, 34))
+            .parent(&script_panel)
+            .text("开始录制 (F8)")
+            .position((276, 55))
+            .size((126, 34))
             .font(Some(&small_font))
             .build(&mut record_button)?;
 
         let mut save_script_button = nwg::Button::default();
         nwg::Button::builder()
-            .parent(&window)
+            .parent(&script_panel)
             .text("保存脚本")
-            .position((718, 437))
-            .size((94, 34))
+            .position((118, 150))
+            .size((100, 34))
             .font(Some(&small_font))
             .enabled(false)
             .build(&mut save_script_button)?;
 
         let mut load_script_button = nwg::Button::default();
         nwg::Button::builder()
-            .parent(&window)
+            .parent(&script_panel)
             .text("加载脚本")
-            .position((823, 437))
-            .size((94, 34))
+            .position((236, 150))
+            .size((100, 34))
             .font(Some(&small_font))
             .build(&mut load_script_button)?;
 
         let mut loop_script = nwg::CheckBox::default();
         nwg::CheckBox::builder()
-            .parent(&window)
+            .parent(&script_panel)
             .text("循环执行")
-            .position((932, 442))
-            .size((120, 28))
+            .position((354, 153))
+            .size((100, 28))
             .font(Some(&small_font))
+            .background_color(Some(PANEL))
             .build(&mut loop_script)?;
 
         let mut hotkey_input = nwg::TextInput::default();
         nwg::TextInput::builder()
-            .parent(&window)
+            .parent(&control_panel)
             .text("F9")
-            .position((221, 546))
-            .size((220, 48))
+            .position((20, 54))
+            .size((150, 38))
             .font(Some(&normal_font))
             .readonly(true)
+            .background_color(Some([255, 255, 255]))
             .build(&mut hotkey_input)?;
 
         let mut game_mode = nwg::CheckBox::default();
         nwg::CheckBox::builder()
-            .parent(&window)
+            .parent(&control_panel)
             .text("后台点击")
-            .position((531, 559))
-            .size((125, 28))
+            .position((424, 59))
+            .size((112, 28))
             .font(Some(&normal_font))
+            .background_color(Some(PANEL_ALT))
+            .check_state(nwg::CheckBoxState::Checked)
             .build(&mut game_mode)?;
 
         let mut start_button = nwg::Button::default();
         nwg::Button::builder()
-            .parent(&window)
+            .parent(&control_panel)
             .text("开始连点 (F9)")
-            .position((727, 542))
-            .size((344, 55))
+            .position((710, 28))
+            .size((248, 62))
             .font(Some(&normal_font))
             .build(&mut start_button)?;
-
         nwg::Notice::builder()
             .parent(&window)
             .build(&mut position_notice)?;
@@ -482,6 +652,18 @@ impl App {
 
         let app = Rc::new(Self {
             window,
+            _app_icon: app_icon,
+            _hero_label: hero_label,
+            _hero_hint: hero_hint,
+            _click_panel: click_panel,
+            _target_panel: target_panel,
+            _timing_panel: timing_panel,
+            _script_panel: script_panel,
+            _control_panel: control_panel,
+            _click_panel_title: click_panel_title,
+            _target_panel_title: target_panel_title,
+            _timing_panel_title: timing_panel_title,
+            _script_panel_title: script_panel_title,
             _title_font: title_font,
             _normal_font: normal_font,
             _small_font: small_font,
@@ -918,8 +1100,7 @@ impl App {
 
         self.position_combo.set_enabled(!self.clicker.is_running());
         let fixed_selected = self.position_combo.selection() == Some(1);
-        self.position_button
-            .set_enabled(!self.clicker.is_running() && fixed_selected);
+        self.position_button.set_enabled(!self.clicker.is_running());
         if fixed_selected {
             if let Some((x, y)) = self.fixed_position.get() {
                 self.position_button
@@ -1138,9 +1319,56 @@ impl App {
     }
 }
 
-fn build_label(
-    label: &mut nwg::Label,
+fn build_panel(
+    frame: &mut nwg::Frame,
     parent: &nwg::Window,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+) -> Result<(), nwg::NwgError> {
+    nwg::Frame::builder()
+        .parent(parent)
+        .position((x, y))
+        .size((w, h))
+        .flags(nwg::FrameFlags::VISIBLE | nwg::FrameFlags::BORDER)
+        .build(frame)
+}
+
+fn build_rich_label<P: Into<nwg::ControlHandle>>(
+    label: &mut nwg::RichLabel,
+    parent: P,
+    text: &str,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    font: &nwg::Font,
+    background: [u8; 3],
+    color: [u8; 3],
+) -> Result<(), nwg::NwgError> {
+    nwg::RichLabel::builder()
+        .parent(parent)
+        .text(text)
+        .position((x, y))
+        .size((w, h))
+        .font(Some(font))
+        .background_color(Some(background))
+        .build(label)?;
+    label.set_char_format(
+        0..text.chars().count() as u32,
+        &nwg::CharFormat {
+            text_color: Some(color),
+            effects: Some(nwg::CharEffects::BOLD),
+            ..Default::default()
+        },
+    );
+    Ok(())
+}
+
+fn build_label<P: Into<nwg::ControlHandle>>(
+    label: &mut nwg::Label,
+    parent: P,
     text: &str,
     x: i32,
     y: i32,
@@ -1157,9 +1385,9 @@ fn build_label(
         .build(label)
 }
 
-fn build_radio(
+fn build_radio<P: Into<nwg::ControlHandle>>(
     radio: &mut nwg::RadioButton,
-    parent: &nwg::Window,
+    parent: P,
     text: &str,
     x: i32,
     y: i32,
@@ -1198,9 +1426,9 @@ fn build_font(size: u32) -> Result<nwg::Font, nwg::NwgError> {
     Ok(font)
 }
 
-fn build_input(
+fn build_input<P: Into<nwg::ControlHandle>>(
     input: &mut nwg::TextInput,
-    parent: &nwg::Window,
+    parent: P,
     text: &str,
     x: i32,
     y: i32,

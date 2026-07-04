@@ -12,6 +12,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
@@ -61,7 +63,7 @@ class FloatingControlService : Service() {
 
     private fun showCrosshair() {
         val savedTarget = ClickerSettings.target(this)
-        val size = dp(56)
+        val size = dp(64)
         val view = CrosshairView(this)
 
         val params = WindowManager.LayoutParams(
@@ -120,16 +122,32 @@ class FloatingControlService : Service() {
 
     private fun showPanel() {
         val root = FrameLayout(this).apply {
-            setBackgroundColor(0xDD111827.toInt())
-            setPadding(dp(8), dp(6), dp(8), dp(6))
+            background = rounded(0xF2111829.toInt(), dp(18), 0xCC22D3EE.toInt(), dp(1))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            elevation = dp(8).toFloat()
+        }
+
+        val title = TextView(this).apply {
+            text = "TARGET HUD"
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(0xFF22D3EE.toInt())
         }
         val status = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 12f
+            textSize = 13f
+            typeface = Typeface.MONOSPACE
         }
         val button = Button(this).apply {
             text = "开始"
             textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            isAllCaps = false
+            minHeight = 0
+            minWidth = 0
+            stateListAnimator = null
+            setTextColor(Color.WHITE)
+            background = rounded(0xFF2563EB.toInt(), dp(14), 0xFF60A5FA.toInt(), dp(1))
             setOnClickListener {
                 val target = ClickerSettings.target(this@FloatingControlService)
                 val interval = ClickerSettings.intervalMs(this@FloatingControlService)
@@ -146,16 +164,19 @@ class FloatingControlService : Service() {
             }
         }
 
-        root.addView(status, FrameLayout.LayoutParams(dp(160), dp(28)).apply {
+        root.addView(title, FrameLayout.LayoutParams(dp(128), dp(18)).apply {
             gravity = Gravity.TOP or Gravity.START
         })
-        root.addView(button, FrameLayout.LayoutParams(dp(86), dp(44)).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
+        root.addView(status, FrameLayout.LayoutParams(dp(178), dp(26)).apply {
+            gravity = Gravity.BOTTOM or Gravity.START
+        })
+        root.addView(button, FrameLayout.LayoutParams(dp(92), dp(44)).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
         })
 
         val params = WindowManager.LayoutParams(
-            dp(260),
-            dp(62),
+            dp(292),
+            dp(72),
             overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
@@ -195,8 +216,15 @@ class FloatingControlService : Service() {
     private fun updateStatus() {
         val target = ClickerSettings.target(this)
         statusView?.text = "坐标 ${target.first},${target.second}"
-        actionButton?.text = if (ClickEngine.isRunning) "停止" else "开始"
-        setCrosshairTouchable(!ClickEngine.isRunning)
+        val running = ClickEngine.isRunning
+        actionButton?.text = if (running) "停止" else "开始"
+        actionButton?.background = rounded(
+            if (running) 0xFFDC2626.toInt() else 0xFF2563EB.toInt(),
+            dp(14),
+            if (running) 0xFFFCA5A5.toInt() else 0xFF60A5FA.toInt(),
+            dp(1)
+        )
+        setCrosshairTouchable(!running)
     }
 
     private fun alignCrosshairToSavedTarget(view: View, params: WindowManager.LayoutParams) {
@@ -252,7 +280,7 @@ class FloatingControlService : Service() {
             windowManager.updateViewLayout(view, params)
         } else if (!touchable && !shouldNotTouch) {
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-            view.alpha = 0.35f
+            view.alpha = 0.45f
             windowManager.updateViewLayout(view, params)
         }
     }
@@ -290,7 +318,7 @@ class FloatingControlService : Service() {
             "悬浮控制",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "奔奔助手悬浮控制运行中"
+            description = "连点助手悬浮控制正在运行"
             setShowBadge(false)
         }
         manager.createNotificationChannel(channel)
@@ -312,11 +340,21 @@ class FloatingControlService : Service() {
         }
         return builder
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("悬浮控制运行中")
+            .setContentText("悬浮控制正在运行")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
+    }
+
+    private fun rounded(color: Int, radius: Int, strokeColor: Int, strokeWidth: Int): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius.toFloat()
+            if (strokeWidth > 0) {
+                setStroke(strokeWidth, strokeColor)
+            }
+        }
     }
 
     private fun dp(value: Int): Int {
@@ -333,14 +371,23 @@ class FloatingControlService : Service() {
     }
 
     private class CrosshairView(context: Context) : View(context) {
+        private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x3322D3EE
+            style = Paint.Style.FILL
+        }
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xCC2563EB.toInt()
+            color = 0xD9141B2D.toInt()
             style = Paint.Style.FILL
         }
         private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF22D3EE.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = dp(2.5f)
+        }
+        private val innerRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = Paint.Style.STROKE
-            strokeWidth = dp(2f)
+            strokeWidth = dp(1.4f)
         }
         private val crossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
@@ -357,17 +404,19 @@ class FloatingControlService : Service() {
             super.onDraw(canvas)
             val centerX = width / 2f
             val centerY = height / 2f
-            val radius = min(width, height) / 2f - dp(2f)
-            val gap = dp(5f)
-            val armLength = radius - dp(8f)
+            val radius = min(width, height) / 2f - dp(5f)
+            val gap = dp(6f)
+            val armLength = radius - dp(7f)
 
+            canvas.drawCircle(centerX, centerY, radius + dp(4f), haloPaint)
             canvas.drawCircle(centerX, centerY, radius, fillPaint)
             canvas.drawCircle(centerX, centerY, radius - ringPaint.strokeWidth / 2f, ringPaint)
+            canvas.drawCircle(centerX, centerY, radius * 0.58f, innerRingPaint)
             canvas.drawLine(centerX - armLength, centerY, centerX - gap, centerY, crossPaint)
             canvas.drawLine(centerX + gap, centerY, centerX + armLength, centerY, crossPaint)
             canvas.drawLine(centerX, centerY - armLength, centerX, centerY - gap, crossPaint)
             canvas.drawLine(centerX, centerY + gap, centerX, centerY + armLength, crossPaint)
-            canvas.drawCircle(centerX, centerY, dp(3f), centerPaint)
+            canvas.drawCircle(centerX, centerY, dp(4f), centerPaint)
         }
 
         private fun dp(value: Float): Float {
