@@ -1001,7 +1001,8 @@ impl App {
             return;
         }
 
-        match self.script_recorder.borrow_mut().start() {
+        let start_result = self.script_recorder.borrow_mut().start();
+        match start_result {
             Ok(()) => {
                 self.run_mode_combo.set_selection(Some(1));
                 self.set_recording_ui(true);

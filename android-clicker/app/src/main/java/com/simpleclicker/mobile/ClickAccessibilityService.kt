@@ -3,8 +3,9 @@ package com.simpleclicker.mobile
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
-import android.os.Build
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 
 class ClickAccessibilityService : AccessibilityService() {
@@ -17,11 +18,12 @@ class ClickAccessibilityService : AccessibilityService() {
             get() = instance != null
     }
 
-    fun tap(x: Int, y: Int, durationMs: Long = 50L): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            return false
-        }
-
+    fun tap(
+        x: Int,
+        y: Int,
+        durationMs: Long = 50L,
+        onFinished: ((Boolean) -> Unit)? = null
+    ): Boolean {
         val path = Path().apply {
             moveTo(x.toFloat(), y.toFloat())
         }
@@ -29,7 +31,28 @@ class ClickAccessibilityService : AccessibilityService() {
         val gesture = GestureDescription.Builder()
             .addStroke(stroke)
             .build()
-        return dispatchGesture(gesture, null, null)
+        val callback = if (onFinished == null) {
+            null
+        } else {
+            object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    onFinished(true)
+                }
+
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    onFinished(false)
+                }
+            }
+        }
+        val accepted = dispatchGesture(
+            gesture,
+            callback,
+            if (callback == null) null else Handler(Looper.getMainLooper())
+        )
+        if (!accepted) {
+            onFinished?.invoke(false)
+        }
+        return accepted
     }
 
     override fun onServiceConnected() {

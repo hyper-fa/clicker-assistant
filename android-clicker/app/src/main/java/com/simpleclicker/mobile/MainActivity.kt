@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -27,6 +28,10 @@ class MainActivity : Activity() {
     private lateinit var accessibilityStatus: TextView
     private lateinit var overlayStatus: TextView
     private lateinit var intervalInput: EditText
+    private lateinit var scriptStatus: TextView
+    private lateinit var clearScriptButton: Button
+    private lateinit var scriptLoopCheck: CheckBox
+    private lateinit var scriptLoopIntervalInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +41,11 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+    }
+
+    override fun onPause() {
+        saveSettings()
+        super.onPause()
     }
 
     private fun buildUi() {
@@ -111,6 +121,84 @@ class MainActivity : Activity() {
 
         content.addView(card().apply {
             orientation = LinearLayout.VERTICAL
+            val header = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            header.addView(sectionTitle("点击脚本"), LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            ))
+            scriptStatus = TextView(this@MainActivity).apply {
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor(COLOR_CYAN)
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                background = rounded(COLOR_PANEL, dp(999), COLOR_STROKE, dp(1))
+            }
+            header.addView(scriptStatus, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(header, fullWidthWrap(dp(10)))
+
+            scriptLoopIntervalInput = EditText(this@MainActivity).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+                setText(ClickerSettings.scriptLoopIntervalMs(this@MainActivity).toString())
+                textSize = 15f
+                setSingleLine(true)
+                setTextColor(COLOR_TEXT)
+                setHintTextColor(COLOR_MUTED)
+                gravity = Gravity.CENTER
+                background = rounded(COLOR_FIELD, dp(10), COLOR_STROKE, dp(1))
+                setPadding(dp(8), 0, dp(8), 0)
+            }
+            scriptLoopCheck = CheckBox(this@MainActivity).apply {
+                text = "循环执行"
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLOR_TEXT)
+                isChecked = ClickerSettings.scriptLoopEnabled(this@MainActivity)
+                setOnCheckedChangeListener { _, enabled ->
+                    ClickerSettings.setScriptLoopEnabled(this@MainActivity, enabled)
+                    updateScriptLoopInputState()
+                }
+            }
+            val loopRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(scriptLoopCheck, LinearLayout.LayoutParams(
+                    0,
+                    dp(46),
+                    1f
+                ))
+                addView(scriptLoopIntervalInput, LinearLayout.LayoutParams(dp(92), dp(42)))
+                addView(TextView(this@MainActivity).apply {
+                    text = "毫秒"
+                    textSize = 13f
+                    setTextColor(COLOR_MUTED)
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(8), 0, 0, 0)
+                }, LinearLayout.LayoutParams(dp(46), dp(42)))
+            }
+            addView(loopRow, fullWidthWrap(dp(10)))
+            updateScriptLoopInputState()
+
+            clearScriptButton = secondaryButton("清空已保存脚本").apply {
+                setOnClickListener {
+                    FloatingControlService.instance?.clearSavedScript()
+                        ?: ClickScriptStore.clear(this@MainActivity)
+                    refreshScriptStatus()
+                    Toast.makeText(this@MainActivity, "脚本已清空", Toast.LENGTH_SHORT).show()
+                }
+            }
+            addView(clearScriptButton, fullWidth(dp(48), 0))
+        }, fullWidthWrap(dp(14)))
+
+        content.addView(card().apply {
+            orientation = LinearLayout.VERTICAL
             addView(sectionTitle("悬浮作战台"), fullWidthWrap())
             addView(TextView(this@MainActivity).apply {
                 text = "启动后拖动准星到目标位置，再在悬浮窗中开始或停止。"
@@ -119,7 +207,7 @@ class MainActivity : Activity() {
             }, fullWidthWrap(dp(14)))
             addView(primaryButton("启动悬浮窗").apply {
                 setOnClickListener {
-                    saveInterval()
+                    saveSettings()
                     if (!Settings.canDrawOverlays(this@MainActivity)) {
                         Toast.makeText(this@MainActivity, "请先开启悬浮窗权限", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
@@ -198,11 +286,33 @@ class MainActivity : Activity() {
         val overlayReady = Settings.canDrawOverlays(this)
         styleStatus(overlayStatus, overlayReady)
         overlayStatus.text = if (overlayReady) "已开启" else "未开启"
+        refreshScriptStatus()
     }
 
-    private fun saveInterval() {
+    private fun refreshScriptStatus() {
+        val script = ClickScriptStore.load(this)
+        scriptStatus.text = if (script == null) {
+            "未录制"
+        } else {
+            "${script.events.size} 点 · ${formatDuration(script.durationMs)}"
+        }
+        clearScriptButton.isEnabled = script != null
+        clearScriptButton.alpha = if (script == null) 0.45f else 1f
+    }
+
+    private fun saveSettings() {
         val interval = intervalInput.text.toString().trim().toLongOrNull() ?: 100L
         ClickerSettings.setIntervalMs(this, interval.coerceAtLeast(1L))
+        ClickerSettings.setScriptLoopEnabled(this, scriptLoopCheck.isChecked)
+        val loopInterval = scriptLoopIntervalInput.text.toString().trim().toLongOrNull()
+            ?: 1_000L
+        ClickerSettings.setScriptLoopIntervalMs(this, loopInterval)
+    }
+
+    private fun updateScriptLoopInputState() {
+        val enabled = scriptLoopCheck.isChecked
+        scriptLoopIntervalInput.isEnabled = enabled
+        scriptLoopIntervalInput.alpha = if (enabled) 1f else 0.45f
     }
 
     private fun isAccessibilityEnabled(): Boolean {
@@ -331,6 +441,15 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun formatDuration(durationMs: Long): String {
+        if (durationMs < 1_000L) {
+            return "${durationMs}ms"
+        }
+        val seconds = durationMs / 1_000L
+        val tenths = (durationMs % 1_000L) / 100L
+        return "$seconds.${tenths}秒"
     }
 
     companion object {
