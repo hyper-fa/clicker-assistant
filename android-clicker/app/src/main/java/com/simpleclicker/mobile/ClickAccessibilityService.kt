@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
@@ -53,6 +54,13 @@ class ClickAccessibilityService : AccessibilityService() {
             onFinished?.invoke(false)
         }
         return accepted
+    }
+
+    fun lockScreen(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return false
+        }
+        return performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
     }
 
     override fun onServiceConnected() {

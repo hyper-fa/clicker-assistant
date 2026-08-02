@@ -28,6 +28,8 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import java.lang.ref.WeakReference
+import java.util.Calendar
+import java.util.Locale
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -35,6 +37,7 @@ class FloatingControlService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "floating_controls"
+        private const val LOCK_SCREEN_DELAY_MS = 300L
 
         private var instanceReference = WeakReference<FloatingControlService>(null)
 
@@ -51,7 +54,7 @@ class FloatingControlService : Service() {
     private var scriptModeButton: Button? = null
     private var clickActionButton: Button? = null
     private var recordButton: Button? = null
-    private var playButton: Button? = null
+    private var executeButton: Button? = null
     private var clearButton: Button? = null
     private var statusView: TextView? = null
     private var crosshairParams: WindowManager.LayoutParams? = null
@@ -66,13 +69,22 @@ class FloatingControlService : Service() {
     private var recordingStartedAt = 0L
     private val recordedEvents = mutableListOf<ScriptTap>()
     private var forwardGeneration = 0
-    private var scriptPlaying = false
+    private var scriptExecutionState = ScriptExecutionState.IDLE
     private var playbackStartedAt = 0L
     private var playbackIndex = 0
     private var playbackEvents: List<ScriptTap> = emptyList()
-    private var playbackLoopEnabled = false
+    private var playbackMode = ScriptExecutionMode.ONCE
     private var playbackLoopIntervalMs = 1_000L
-    private var playbackWaitingForLoop = false
+    private var loopDeadlineElapsedMs = 0L
+    private var scheduledDeadlineWallTimeMs = 0L
+    private var lockAfterScheduledExecution = false
+
+    private enum class ScriptExecutionState {
+        IDLE,
+        WAITING_SCHEDULE,
+        EXECUTING,
+        WAITING_LOOP
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -90,7 +102,7 @@ class FloatingControlService : Service() {
             ClickScriptStore.save(this, recordedEvents)
         }
         recording = false
-        stopScriptPlayback()
+        stopScriptExecution()
         ClickEngine.stop()
         handler.removeCallbacksAndMessages(null)
         rootView?.let { windowManager.removeView(it) }
@@ -111,7 +123,7 @@ class FloatingControlService : Service() {
 
     fun clearSavedScript() {
         stopRecording(save = false)
-        stopScriptPlayback()
+        stopScriptExecution()
         ClickScriptStore.clear(this)
         updateStatus()
     }
@@ -280,13 +292,13 @@ class FloatingControlService : Service() {
                 }
             }
         }
-        val playAction = hudButton("播放").apply {
+        val executeAction = hudButton("执行").apply {
             setOnClickListener {
-                if (scriptPlaying) {
-                    stopScriptPlayback()
+                if (isScriptExecutionActive()) {
+                    stopScriptExecution()
                     updateStatus()
                 } else {
-                    startScriptPlayback()
+                    startScriptExecution()
                 }
             }
         }
@@ -327,7 +339,7 @@ class FloatingControlService : Service() {
             leftMargin = 0
             topMargin = dp(70)
         })
-        root.addView(playAction, FrameLayout.LayoutParams(actionWidth, dp(42)).apply {
+        root.addView(executeAction, FrameLayout.LayoutParams(actionWidth, dp(42)).apply {
             leftMargin = actionWidth + actionGap
             topMargin = dp(70)
         })
@@ -378,7 +390,7 @@ class FloatingControlService : Service() {
         scriptModeButton = scriptModeControl
         clickActionButton = clickAction
         recordButton = recordAction
-        playButton = playAction
+        executeButton = executeAction
         clearButton = clearAction
         panelParams = params
         windowManager.addView(root, params)
@@ -388,26 +400,35 @@ class FloatingControlService : Service() {
         val target = ClickerSettings.target(this)
         val clickRunning = ClickEngine.isRunning
         val storedScript = ClickScriptStore.load(this)
+        val executionActive = isScriptExecutionActive()
+        val configuredMode = ClickerSettings.scriptExecutionMode(this)
 
         clickModeButton?.let { styleHudButton(it, selected = !scriptMode) }
         scriptModeButton?.let { styleHudButton(it, selected = scriptMode) }
         clickActionButton?.visibility = if (scriptMode) View.GONE else View.VISIBLE
         recordButton?.visibility = if (scriptMode) View.VISIBLE else View.GONE
-        playButton?.visibility = if (scriptMode) View.VISIBLE else View.GONE
+        executeButton?.visibility = if (scriptMode) View.VISIBLE else View.GONE
         clearButton?.visibility = if (scriptMode) View.VISIBLE else View.GONE
 
         if (scriptMode) {
             statusView?.text = when {
                 recording -> "录制中 · ${recordedEvents.size} 点"
-                scriptPlaying && playbackWaitingForLoop ->
-                    "循环等待 · ${formatDuration(playbackLoopIntervalMs)}"
-                scriptPlaying && playbackLoopEnabled ->
-                    "循环 ${playbackIndex.coerceAtMost(playbackEvents.size)}/${playbackEvents.size}"
-                scriptPlaying ->
-                    "播放 ${playbackIndex.coerceAtMost(playbackEvents.size)}/${playbackEvents.size}"
+                scriptExecutionState == ScriptExecutionState.WAITING_LOOP ->
+                    "下轮执行 · ${formatCountdown(loopRemainingMs())}"
+                scriptExecutionState == ScriptExecutionState.WAITING_SCHEDULE ->
+                    "定时等待 · ${formatCountdown(scheduleRemainingMs())}"
+                scriptExecutionState == ScriptExecutionState.EXECUTING &&
+                    playbackMode == ScriptExecutionMode.LOOP ->
+                    "循环执行 ${playbackIndex.coerceAtMost(playbackEvents.size)}/${playbackEvents.size}"
+                scriptExecutionState == ScriptExecutionState.EXECUTING ->
+                    "执行中 ${playbackIndex.coerceAtMost(playbackEvents.size)}/${playbackEvents.size}"
                 storedScript == null -> "暂无脚本"
-                ClickerSettings.scriptLoopEnabled(this) ->
-                    "${storedScript.events.size} 点 · 循环"
+                configuredMode == ScriptExecutionMode.LOOP ->
+                    "${storedScript.events.size} 点 · 循环执行"
+                configuredMode == ScriptExecutionMode.SCHEDULED -> {
+                    val scheduledTime = ClickerSettings.scriptScheduledTime(this)
+                    "${storedScript.events.size} 点 · 定时 ${formatClockTime(scheduledTime)}"
+                }
                 else ->
                     "${storedScript.events.size} 点 · ${formatDuration(storedScript.durationMs)}"
             }
@@ -421,23 +442,23 @@ class FloatingControlService : Service() {
         }
         recordButton?.apply {
             text = if (recording) "停止录制" else "录制"
-            isEnabled = !scriptPlaying
+            isEnabled = !executionActive
             alpha = if (isEnabled) 1f else 0.45f
             styleActionButton(this, running = recording)
         }
-        playButton?.apply {
-            text = if (scriptPlaying) "停止播放" else "播放"
-            isEnabled = !recording && (storedScript != null || scriptPlaying)
+        executeButton?.apply {
+            text = if (executionActive) "停止执行" else "执行"
+            isEnabled = !recording && (storedScript != null || executionActive)
             alpha = if (isEnabled) 1f else 0.45f
-            styleActionButton(this, running = scriptPlaying)
+            styleActionButton(this, running = executionActive)
         }
         clearButton?.apply {
-            isEnabled = !recording && !scriptPlaying && storedScript != null
+            isEnabled = !recording && !executionActive && storedScript != null
             alpha = if (isEnabled) 1f else 0.45f
             background = rounded(0xCC18263B.toInt(), dp(10), 0xC027415F.toInt(), dp(1))
         }
 
-        val controlsLocked = clickRunning || recording || scriptPlaying
+        val controlsLocked = clickRunning || recording || executionActive
         clickModeButton?.isEnabled = !controlsLocked
         scriptModeButton?.isEnabled = !controlsLocked
         setCrosshairTouchable(!controlsLocked)
@@ -461,7 +482,7 @@ class FloatingControlService : Service() {
         }
 
         ClickEngine.stop()
-        stopScriptPlayback()
+        stopScriptExecution()
         scriptMode = true
         recordedEvents.clear()
         forwardingRecordedTap = false
@@ -558,7 +579,7 @@ class FloatingControlService : Service() {
         updateStatus()
     }
 
-    private fun startScriptPlayback() {
+    private fun startScriptExecution() {
         val script = ClickScriptStore.load(this)
         if (script == null) {
             Toast.makeText(this, "请先录制脚本", Toast.LENGTH_SHORT).show()
@@ -571,20 +592,56 @@ class FloatingControlService : Service() {
         }
 
         ClickEngine.stop()
+        stopScriptExecution()
+        scriptMode = true
         playbackEvents = script.events
         playbackIndex = 0
-        playbackLoopEnabled = ClickerSettings.scriptLoopEnabled(this)
-        playbackLoopIntervalMs = ClickerSettings.scriptLoopIntervalMs(this)
-        playbackWaitingForLoop = false
+        playbackMode = ClickerSettings.scriptExecutionMode(this)
+        playbackLoopIntervalMs = ClickerSettings.scriptLoopIntervalSeconds(this) * 1_000L
+        lockAfterScheduledExecution = playbackMode == ScriptExecutionMode.SCHEDULED &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            ClickerSettings.lockAfterScheduledExecution(this)
+
+        if (playbackMode == ScriptExecutionMode.SCHEDULED) {
+            val scheduledTime = ClickerSettings.scriptScheduledTime(this)
+            scheduledDeadlineWallTimeMs = nextScheduledDeadline(
+                scheduledTime.first,
+                scheduledTime.second
+            )
+            if (scheduledDeadlineWallTimeMs <= System.currentTimeMillis()) {
+                beginScriptExecutionRound()
+            } else {
+                scriptExecutionState = ScriptExecutionState.WAITING_SCHEDULE
+                updateStatus()
+                scheduleCountdownTick(scheduleRemainingMs())
+            }
+            return
+        }
+
+        beginScriptExecutionRound()
+    }
+
+    private fun beginScriptExecutionRound() {
+        handler.removeCallbacks(countdownRunnable)
+        if (ClickAccessibilityService.instance == null) {
+            Toast.makeText(this, "无障碍服务已断开", Toast.LENGTH_SHORT).show()
+            stopScriptExecution()
+            updateStatus()
+            return
+        }
+
+        playbackIndex = 0
         playbackStartedAt = SystemClock.uptimeMillis()
-        scriptPlaying = true
+        scriptExecutionState = ScriptExecutionState.EXECUTING
         updateStatus()
         scheduleNextPlaybackEvent()
     }
 
     private fun scheduleNextPlaybackEvent() {
-        if (!scriptPlaying || playbackIndex >= playbackEvents.size) {
-            finishScriptPlayback()
+        if (scriptExecutionState != ScriptExecutionState.EXECUTING ||
+            playbackIndex >= playbackEvents.size
+        ) {
+            finishScriptExecution()
             return
         }
         val event = playbackEvents[playbackIndex]
@@ -593,12 +650,13 @@ class FloatingControlService : Service() {
 
     private val playbackRunnable = object : Runnable {
         override fun run() {
-            if (!scriptPlaying || playbackIndex >= playbackEvents.size) {
-                finishScriptPlayback()
+            if (scriptExecutionState != ScriptExecutionState.EXECUTING ||
+                playbackIndex >= playbackEvents.size
+            ) {
+                finishScriptExecution()
                 return
             }
 
-            playbackWaitingForLoop = false
             val event = playbackEvents[playbackIndex]
             moveCrosshairTo(event.x, event.y, persist = false)
             val accepted = ClickAccessibilityService.instance?.tap(event.x, event.y) == true
@@ -608,7 +666,7 @@ class FloatingControlService : Service() {
                     "脚本点击失败，请检查无障碍服务",
                     Toast.LENGTH_SHORT
                 ).show()
-                stopScriptPlayback()
+                stopScriptExecution()
                 updateStatus()
                 return
             }
@@ -617,37 +675,119 @@ class FloatingControlService : Service() {
             updateStatus()
             if (playbackIndex < playbackEvents.size) {
                 scheduleNextPlaybackEvent()
-            } else if (playbackLoopEnabled) {
-                playbackIndex = 0
-                playbackWaitingForLoop = true
-                playbackStartedAt = SystemClock.uptimeMillis() + playbackLoopIntervalMs
+            } else if (playbackMode == ScriptExecutionMode.LOOP) {
+                scriptExecutionState = ScriptExecutionState.WAITING_LOOP
+                loopDeadlineElapsedMs = SystemClock.elapsedRealtime() + playbackLoopIntervalMs
                 updateStatus()
-                scheduleNextPlaybackEvent()
+                scheduleCountdownTick(loopRemainingMs())
             } else {
-                handler.postDelayed({ finishScriptPlayback() }, 80L)
+                handler.postDelayed(finishExecutionRunnable, 80L)
             }
         }
     }
 
-    private fun finishScriptPlayback() {
-        if (!scriptPlaying) {
-            return
+    private val countdownRunnable = object : Runnable {
+        override fun run() {
+            val remainingMs = when (scriptExecutionState) {
+                ScriptExecutionState.WAITING_LOOP -> loopRemainingMs()
+                ScriptExecutionState.WAITING_SCHEDULE -> scheduleRemainingMs()
+                else -> return
+            }
+            if (remainingMs <= 0L) {
+                beginScriptExecutionRound()
+                return
+            }
+
+            updateStatus()
+            scheduleCountdownTick(remainingMs)
         }
-        scriptPlaying = false
-        playbackIndex = 0
-        playbackEvents = emptyList()
-        playbackLoopEnabled = false
-        playbackWaitingForLoop = false
-        updateStatus()
     }
 
-    private fun stopScriptPlayback() {
+    private val finishExecutionRunnable = Runnable {
+        finishScriptExecution()
+    }
+
+    private val lockScreenRunnable = Runnable {
+        val locked = ClickAccessibilityService.instance?.lockScreen() == true
+        if (!locked) {
+            Toast.makeText(
+                this,
+                "自动锁屏失败，请检查无障碍服务",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private fun scheduleCountdownTick(remainingMs: Long) {
+        handler.removeCallbacks(countdownRunnable)
+        handler.postDelayed(countdownRunnable, remainingMs.coerceIn(1L, 1_000L))
+    }
+
+    private fun finishScriptExecution() {
+        if (!isScriptExecutionActive()) {
+            return
+        }
+        val shouldLockScreen = playbackMode == ScriptExecutionMode.SCHEDULED &&
+            lockAfterScheduledExecution
         handler.removeCallbacks(playbackRunnable)
-        scriptPlaying = false
+        handler.removeCallbacks(countdownRunnable)
+        handler.removeCallbacks(finishExecutionRunnable)
+        handler.removeCallbacks(lockScreenRunnable)
+        scriptExecutionState = ScriptExecutionState.IDLE
         playbackIndex = 0
         playbackEvents = emptyList()
-        playbackLoopEnabled = false
-        playbackWaitingForLoop = false
+        playbackMode = ScriptExecutionMode.ONCE
+        loopDeadlineElapsedMs = 0L
+        scheduledDeadlineWallTimeMs = 0L
+        lockAfterScheduledExecution = false
+        updateStatus()
+        if (shouldLockScreen) {
+            handler.postDelayed(lockScreenRunnable, LOCK_SCREEN_DELAY_MS)
+        }
+    }
+
+    private fun stopScriptExecution() {
+        handler.removeCallbacks(playbackRunnable)
+        handler.removeCallbacks(countdownRunnable)
+        handler.removeCallbacks(finishExecutionRunnable)
+        handler.removeCallbacks(lockScreenRunnable)
+        scriptExecutionState = ScriptExecutionState.IDLE
+        playbackIndex = 0
+        playbackEvents = emptyList()
+        playbackMode = ScriptExecutionMode.ONCE
+        loopDeadlineElapsedMs = 0L
+        scheduledDeadlineWallTimeMs = 0L
+        lockAfterScheduledExecution = false
+    }
+
+    private fun isScriptExecutionActive(): Boolean {
+        return scriptExecutionState != ScriptExecutionState.IDLE
+    }
+
+    private fun loopRemainingMs(): Long {
+        return (loopDeadlineElapsedMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+    }
+
+    private fun scheduleRemainingMs(): Long {
+        return (scheduledDeadlineWallTimeMs - System.currentTimeMillis()).coerceAtLeast(0L)
+    }
+
+    private fun nextScheduledDeadline(hour: Int, minute: Int): Long {
+        val now = Calendar.getInstance()
+        if (now.get(Calendar.HOUR_OF_DAY) == hour && now.get(Calendar.MINUTE) == minute) {
+            return now.timeInMillis
+        }
+
+        val target = (now.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        if (target.timeInMillis <= now.timeInMillis) {
+            target.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return target.timeInMillis
     }
 
     private fun setRecorderCaptureEnabled(enabled: Boolean) {
@@ -729,6 +869,22 @@ class FloatingControlService : Service() {
         val seconds = durationMs / 1_000L
         val tenths = (durationMs % 1_000L) / 100L
         return "$seconds.${tenths}秒"
+    }
+
+    private fun formatCountdown(durationMs: Long): String {
+        val totalSeconds = (durationMs.coerceAtLeast(0L) + 999L) / 1_000L
+        val hours = totalSeconds / 3_600L
+        val minutes = (totalSeconds % 3_600L) / 60L
+        val seconds = totalSeconds % 60L
+        return if (hours > 0L) {
+            String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        }
+    }
+
+    private fun formatClockTime(time: Pair<Int, Int>): String {
+        return String.format(Locale.US, "%02d:%02d", time.first, time.second)
     }
 
     private fun alignCrosshairToSavedTarget(view: View, params: WindowManager.LayoutParams) {

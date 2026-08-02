@@ -1,6 +1,7 @@
 package com.simpleclicker.mobile
 
 import android.app.Activity
+import android.app.TimePickerDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -14,6 +15,7 @@ import android.provider.Settings
 import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.widget.Button
@@ -23,6 +25,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var accessibilityStatus: TextView
@@ -30,11 +33,24 @@ class MainActivity : Activity() {
     private lateinit var intervalInput: EditText
     private lateinit var scriptStatus: TextView
     private lateinit var clearScriptButton: Button
-    private lateinit var scriptLoopCheck: CheckBox
+    private lateinit var scriptOnceModeButton: Button
+    private lateinit var scriptLoopModeButton: Button
+    private lateinit var scriptScheduledModeButton: Button
     private lateinit var scriptLoopIntervalInput: EditText
+    private lateinit var scriptLoopOptions: LinearLayout
+    private lateinit var scriptScheduledOptions: LinearLayout
+    private lateinit var scriptScheduledTimeButton: Button
+    private lateinit var scriptLockAfterScheduledCheck: CheckBox
+    private var selectedScriptExecutionMode = ScriptExecutionMode.ONCE
+    private var scriptScheduledHour = 0
+    private var scriptScheduledMinute = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        selectedScriptExecutionMode = ClickerSettings.scriptExecutionMode(this)
+        val scheduledTime = ClickerSettings.scriptScheduledTime(this)
+        scriptScheduledHour = scheduledTime.first
+        scriptScheduledMinute = scheduledTime.second
         buildUi()
     }
 
@@ -144,9 +160,40 @@ class MainActivity : Activity() {
             ))
             addView(header, fullWidthWrap(dp(10)))
 
+            addView(TextView(this@MainActivity).apply {
+                text = "执行方式"
+                textSize = 13f
+                setTextColor(COLOR_MUTED)
+            }, fullWidthWrap(dp(8)))
+
+            scriptOnceModeButton = scriptModeButton(
+                "单次执行",
+                ScriptExecutionMode.ONCE
+            )
+            scriptLoopModeButton = scriptModeButton(
+                "循环执行",
+                ScriptExecutionMode.LOOP
+            )
+            scriptScheduledModeButton = scriptModeButton(
+                "定时执行",
+                ScriptExecutionMode.SCHEDULED
+            )
+            val modeGap = dp(6)
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(scriptOnceModeButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    rightMargin = modeGap
+                })
+                addView(scriptLoopModeButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    rightMargin = modeGap
+                })
+                addView(scriptScheduledModeButton, LinearLayout.LayoutParams(0, dp(42), 1f))
+            }, fullWidthWrap(dp(10)))
+
             scriptLoopIntervalInput = EditText(this@MainActivity).apply {
                 inputType = InputType.TYPE_CLASS_NUMBER
-                setText(ClickerSettings.scriptLoopIntervalMs(this@MainActivity).toString())
+                setText(ClickerSettings.scriptLoopIntervalSeconds(this@MainActivity).toString())
                 textSize = 15f
                 setSingleLine(true)
                 setTextColor(COLOR_TEXT)
@@ -155,36 +202,71 @@ class MainActivity : Activity() {
                 background = rounded(COLOR_FIELD, dp(10), COLOR_STROKE, dp(1))
                 setPadding(dp(8), 0, dp(8), 0)
             }
-            scriptLoopCheck = CheckBox(this@MainActivity).apply {
-                text = "循环执行"
-                textSize = 14f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(COLOR_TEXT)
-                isChecked = ClickerSettings.scriptLoopEnabled(this@MainActivity)
-                setOnCheckedChangeListener { _, enabled ->
-                    ClickerSettings.setScriptLoopEnabled(this@MainActivity, enabled)
-                    updateScriptLoopInputState()
-                }
-            }
-            val loopRow = LinearLayout(this@MainActivity).apply {
+            scriptLoopOptions = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(scriptLoopCheck, LinearLayout.LayoutParams(
-                    0,
-                    dp(46),
-                    1f
-                ))
+                addView(TextView(this@MainActivity).apply {
+                    text = "每轮间隔"
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLOR_TEXT)
+                    gravity = Gravity.CENTER_VERTICAL
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
                 addView(scriptLoopIntervalInput, LinearLayout.LayoutParams(dp(92), dp(42)))
                 addView(TextView(this@MainActivity).apply {
-                    text = "毫秒"
+                    text = "秒"
                     textSize = 13f
                     setTextColor(COLOR_MUTED)
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(8), 0, 0, 0)
-                }, LinearLayout.LayoutParams(dp(46), dp(42)))
+                }, LinearLayout.LayoutParams(dp(32), dp(42)))
             }
-            addView(loopRow, fullWidthWrap(dp(10)))
-            updateScriptLoopInputState()
+            addView(scriptLoopOptions, fullWidthWrap(dp(10)))
+
+            scriptScheduledTimeButton = secondaryButton(formatScheduledTime()).apply {
+                setOnClickListener { showScheduledTimePicker() }
+            }
+            scriptScheduledOptions = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(this@MainActivity).apply {
+                        text = "执行时间"
+                        textSize = 14f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(COLOR_TEXT)
+                        gravity = Gravity.CENTER_VERTICAL
+                    }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                    addView(
+                        scriptScheduledTimeButton,
+                        LinearLayout.LayoutParams(dp(112), dp(42))
+                    )
+                }, fullWidthWrap(dp(4)))
+                scriptLockAfterScheduledCheck = CheckBox(this@MainActivity).apply {
+                    text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        "执行完成后自动锁屏"
+                    } else {
+                        "执行完成后自动锁屏（需 Android 9 及以上）"
+                    }
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLOR_TEXT)
+                    isChecked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                        ClickerSettings.lockAfterScheduledExecution(this@MainActivity)
+                    isEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    alpha = if (isEnabled) 1f else 0.45f
+                    setOnCheckedChangeListener { _, enabled ->
+                        ClickerSettings.setLockAfterScheduledExecution(
+                            this@MainActivity,
+                            enabled
+                        )
+                    }
+                }
+                addView(scriptLockAfterScheduledCheck, fullWidth(dp(46), 0))
+            }
+            addView(scriptScheduledOptions, fullWidthWrap(dp(10)))
+            updateScriptExecutionModeUi()
 
             clearScriptButton = secondaryButton("清空已保存脚本").apply {
                 setOnClickListener {
@@ -303,16 +385,91 @@ class MainActivity : Activity() {
     private fun saveSettings() {
         val interval = intervalInput.text.toString().trim().toLongOrNull() ?: 100L
         ClickerSettings.setIntervalMs(this, interval.coerceAtLeast(1L))
-        ClickerSettings.setScriptLoopEnabled(this, scriptLoopCheck.isChecked)
-        val loopInterval = scriptLoopIntervalInput.text.toString().trim().toLongOrNull()
-            ?: 1_000L
-        ClickerSettings.setScriptLoopIntervalMs(this, loopInterval)
+        ClickerSettings.setScriptExecutionMode(this, selectedScriptExecutionMode)
+        val loopIntervalSeconds = scriptLoopIntervalInput.text.toString().trim().toLongOrNull()
+            ?: ClickerSettings.scriptLoopIntervalSeconds(this)
+        val normalizedLoopInterval = loopIntervalSeconds.coerceIn(1L, 86_400L)
+        scriptLoopIntervalInput.setText(normalizedLoopInterval.toString())
+        ClickerSettings.setScriptLoopIntervalSeconds(this, normalizedLoopInterval)
+        ClickerSettings.setScriptScheduledTime(
+            this,
+            scriptScheduledHour,
+            scriptScheduledMinute
+        )
+        ClickerSettings.setLockAfterScheduledExecution(
+            this,
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                scriptLockAfterScheduledCheck.isChecked
+        )
     }
 
-    private fun updateScriptLoopInputState() {
-        val enabled = scriptLoopCheck.isChecked
-        scriptLoopIntervalInput.isEnabled = enabled
-        scriptLoopIntervalInput.alpha = if (enabled) 1f else 0.45f
+    private fun scriptModeButton(
+        textValue: String,
+        mode: ScriptExecutionMode
+    ): Button {
+        return secondaryButton(textValue).apply {
+            textSize = 13f
+            setOnClickListener {
+                selectedScriptExecutionMode = mode
+                ClickerSettings.setScriptExecutionMode(this@MainActivity, mode)
+                updateScriptExecutionModeUi()
+            }
+        }
+    }
+
+    private fun updateScriptExecutionModeUi() {
+        styleScriptModeButton(
+            scriptOnceModeButton,
+            selectedScriptExecutionMode == ScriptExecutionMode.ONCE
+        )
+        styleScriptModeButton(
+            scriptLoopModeButton,
+            selectedScriptExecutionMode == ScriptExecutionMode.LOOP
+        )
+        styleScriptModeButton(
+            scriptScheduledModeButton,
+            selectedScriptExecutionMode == ScriptExecutionMode.SCHEDULED
+        )
+        scriptLoopOptions.visibility = if (
+            selectedScriptExecutionMode == ScriptExecutionMode.LOOP
+        ) View.VISIBLE else View.GONE
+        scriptScheduledOptions.visibility = if (
+            selectedScriptExecutionMode == ScriptExecutionMode.SCHEDULED
+        ) View.VISIBLE else View.GONE
+    }
+
+    private fun styleScriptModeButton(button: Button, selected: Boolean) {
+        button.setTextColor(if (selected) Color.WHITE else COLOR_TEXT)
+        button.background = rounded(
+            if (selected) COLOR_BLUE else COLOR_PANEL,
+            dp(10),
+            if (selected) COLOR_CYAN else COLOR_STROKE,
+            dp(1)
+        )
+    }
+
+    private fun showScheduledTimePicker() {
+        TimePickerDialog(
+            this,
+            { _, hour, minute ->
+                scriptScheduledHour = hour
+                scriptScheduledMinute = minute
+                scriptScheduledTimeButton.text = formatScheduledTime()
+                ClickerSettings.setScriptScheduledTime(this, hour, minute)
+            },
+            scriptScheduledHour,
+            scriptScheduledMinute,
+            true
+        ).show()
+    }
+
+    private fun formatScheduledTime(): String {
+        return String.format(
+            Locale.US,
+            "%02d:%02d",
+            scriptScheduledHour,
+            scriptScheduledMinute
+        )
     }
 
     private fun isAccessibilityEnabled(): Boolean {
